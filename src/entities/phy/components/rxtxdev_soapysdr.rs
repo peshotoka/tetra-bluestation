@@ -102,11 +102,11 @@ impl RxTxDevSoapySdr {
 }
 
 impl RxTxDev for RxTxDevSoapySdr {
-    fn rxtx_timeslot(
-        &mut self,
+    fn rxtx_timeslot<'a>(
+        &'a mut self,
         tx_slot: &[TxSlotBits],
     // TODO multiple demodulators
-    ) -> Result<Vec<Option<RxSlotBits>>, RxTxDevError> {
+    ) -> Result<Vec<Option<RxSlotBits<'a>>>, RxTxDevError> {
         // First generate as much TX signal as possible at the moment.
         while self.process_tx_block(tx_slot)? { }
 
@@ -268,7 +268,7 @@ impl RxDsp {
         }
     }
 
-    fn take_slot_bits(&mut self) -> Vec<Option<RxSlotBits>> {
+    fn take_slot_bits<'a>(&'a mut self) -> Vec<Option<RxSlotBits<'a>>> {
         // TODO: avoid dynamic allocation here?
         let mut slot_bits = Vec::with_capacity(2 * self.monitors.len() + self.ul_demodulators.len());
 

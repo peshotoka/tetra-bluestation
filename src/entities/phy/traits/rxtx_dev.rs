@@ -39,5 +39,5 @@ pub struct TxSlotBits<'a> {
 
 /// Trait for RX/TX devices that work with full slots.
 pub trait RxTxDev {
-    fn rxtx_timeslot(&mut self, tx_slot: &[TxSlotBits]) -> Result<Vec<Option<RxSlotBits>>, RxTxDevError>;
+    fn rxtx_timeslot(&mut self, tx_slot: &[TxSlotBits]) -> Result<Vec<Option<RxSlotBits<'_>>>, RxTxDevError>;
 }

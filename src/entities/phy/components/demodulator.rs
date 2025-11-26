@@ -402,7 +402,7 @@ impl Demodulator {
         self.demodulated_slot_available
     }
 
-    pub fn take_demodulated_slot(&mut self) -> Option<RxSlotBits> {
+    pub fn take_demodulated_slot<'a>(&'a mut self) -> Option<RxSlotBits<'a>> {
         if self.demodulated_slot_available {
             self.demodulated_slot_available = false;
             Some(RxSlotBits {
@@ -573,7 +573,7 @@ impl SlotBurstFinder {
         false
     }
 
-    fn get_burst(&mut self) -> RxBurstBits {
+    fn get_burst<'a>(&'a mut self) -> RxBurstBits<'a> {
         RxBurstBits {
             train_type: self.train_type,
             bits: &self.bits[self.burst_pos .. self.burst_pos + self.burst_len]
