@@ -93,7 +93,7 @@ impl MacSysinfo {
         }
 
         let bits = buf.read_field(2, "option_field")?;
-        s.option_field = SysinfoOptFieldFlag::try_from(bits).expect("Invalid sysinfo option field");
+        s.option_field = SysinfoOptFieldFlag::try_from(bits).unwrap(); // always works
 
         match s.option_field {
             SysinfoOptFieldFlag::EvenMfDefForTsMode => {

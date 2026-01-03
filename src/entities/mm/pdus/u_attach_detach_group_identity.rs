@@ -44,7 +44,7 @@ impl UAttachDetachGroupIdentity {
         // obit designates presence of any further type2, type3 or type4 fields
         let mut obit = typed_pdu_fields::delimiters::read_obit(buffer)?;
 
-        // Type3
+        // Type3 - stores raw data, so use existing approach
         let group_report_response = if obit { 
             match MmType3FieldUl::parse(buffer, MmType34ElemIdUl::GroupReportResponse) {
                 Ok(value) => Some(value),
@@ -52,20 +52,14 @@ impl UAttachDetachGroupIdentity {
             }
         } else { None };
         
-        // Type4
-        let type4_field = MmType4FieldUl::parse_header(buffer, MmType34ElemIdUl::GroupIdentityUplink);
-        let group_identity_uplink = match type4_field {
-            Ok((num_elems, _len_bits)) => {
-                let mut elems = Vec::with_capacity(num_elems);
-                for _ in 0..num_elems {
-                    elems.push(GroupIdentityUplink::from_bitbuf(buffer)?);
-                }
-                Some(elems)
-            },
-            Err(_) => None
-        };
+        // Type4 - parses to structs, use generic helper
+        let group_identity_uplink = typed_pdu_fields::type34::parse_type4_struct(
+            buffer,
+            MmType34ElemIdUl::GroupIdentityUplink,
+            GroupIdentityUplink::from_bitbuf
+        ).map_err(|_| PduParseError::BufferEnded { field: "group_identity_uplink" })?;
         
-        // Type3
+        // Type3 - stores raw data
         let proprietary = if obit { 
             match MmType3FieldUl::parse(buffer, MmType34ElemIdUl::Proprietary) {
                 Ok(value) => Some(value),
@@ -108,9 +102,12 @@ impl UAttachDetachGroupIdentity {
             MmType3FieldUl::write(buffer, value.field_type, value.data, value.len);
         }
         // Type4
-        if let Some(ref value) = self.group_identity_uplink {
-            MmType4FieldUl::write_field(buffer, MmType34ElemIdUl::GroupIdentityUplink, value);
-        }
+        typed_pdu_fields::type34::write_type4_struct(
+            buffer,
+            &self.group_identity_uplink,
+            MmType34ElemIdUl::GroupIdentityUplink,
+            GroupIdentityUplink::to_bitbuf
+        )?;
         // Type3
         if let Some(ref value) = self.proprietary {
             MmType3FieldUl::write(buffer, value.field_type, value.data, value.len);

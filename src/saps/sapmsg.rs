@@ -83,6 +83,7 @@ pub enum SapMsgInner {
 
     // LCMC-SAP (MLE-CMCE)
     LcmcMleUnitdataInd(LcmcMleUnitdataInd),
+    LcmcMleUnitdataReq(LcmcMleUnitdataReq),
 
     // LTPD-SAP (MLE-LTPD)
     LtpdMleUnitdataInd(LtpdMleUnitdataInd)

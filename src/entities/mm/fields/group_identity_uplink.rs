@@ -47,7 +47,7 @@ impl GroupIdentityUplink {
         Ok(s)
     }
 
-    pub fn to_bitbuf(&self, buf: &mut BitBuffer) {
+    pub fn to_bitbuf(&self, buf: &mut BitBuffer) -> Result<(), PduParseError> {
 
         assert!(self.class_of_usage.is_some() ^ self.group_identity_detachment_uplink.is_some(), "need one of class_of_usage or group_identity_detachment_uplink");
         buf.write_bits(if self.class_of_usage.is_some() {0} else {1}, 1);
@@ -70,6 +70,7 @@ impl GroupIdentityUplink {
         if let Some(v) = self.gssi { buf.write_bits(v as u64, 24); }
         if let Some(v) = self.address_extension { buf.write_bits(v as u64, 24); }
         if let Some(v) = self.vgssi { buf.write_bits(v as u64, 24); }
+        Ok(())
     }
 
 }

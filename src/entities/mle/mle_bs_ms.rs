@@ -1,3 +1,4 @@
+use crate::common::address::TetraAddress;
 use crate::common::messagerouter::MessageQueue;
 use crate::saps::lcmc::LcmcMleUnitdataInd;
 use crate::saps::lmm::LmmMleUnitdataInd;
@@ -118,10 +119,9 @@ impl Mle {
                 let m = LcmcMleUnitdataInd{ 
                     sdu,
                     handle: 0, // TODO FIXME
-                    received_address_type: 0,
+                    received_tetra_address: prim.main_address,
                     endpoint_id: 0, // TODO FIXME
                     link_id: 0, // TODO FIXME,
-                    received_tetra_address: 0, // TODO FIXME
                     chan_change_resp_req: false, // TODO FIXME
                     chan_change_handle: None, // TODO FIXME
                 };
@@ -137,10 +137,10 @@ impl Mle {
             MleProtocolDiscriminator::Sndcp => {
                 let m = LtpdMleUnitdataInd{ 
                     sdu,
-                    received_address_type: 0,
                     endpoint_id: 0, // TODO FIXME
                     link_id: 0, // TODO FIXME,
-                    received_tetra_address: 0, // TODO FIXME
+                    received_tetra_address: prim.main_address,
+                    // received_address_type: 0,
                     chan_change_resp_req: false, // TODO FIXME
                     chan_change_handle: None, // TODO FIXME
                 };
@@ -206,10 +206,10 @@ impl Mle {
                 let m = LcmcMleUnitdataInd{ 
                     sdu,
                     handle: 0, // TODO FIXME
-                    received_address_type: 0,
                     endpoint_id: 0, // TODO FIXME
                     link_id: 0, // TODO FIXME,
-                    received_tetra_address: 0, // TODO FIXME
+                    received_tetra_address: TetraAddress::default(), // TODO FIXME
+                    // received_address_type: 0,
                     chan_change_resp_req: false, // TODO FIXME
                     chan_change_handle: None, // TODO FIXME
                 };
@@ -225,10 +225,10 @@ impl Mle {
             MleProtocolDiscriminator::Sndcp => {
                 let m = LtpdMleUnitdataInd{ 
                     sdu,
-                    received_address_type: 0,
                     endpoint_id: 0, // TODO FIXME
                     link_id: 0, // TODO FIXME,
-                    received_tetra_address: 0, // TODO FIXME
+                    received_tetra_address: prim.main_address,
+                    // received_address_type: 0,
                     chan_change_resp_req: false, // TODO FIXME
                     chan_change_handle: None, // TODO FIXME
                 };

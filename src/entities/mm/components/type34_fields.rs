@@ -4,7 +4,7 @@ use crate::entities::mm::enums::type34_elem_id_dl::MmType34ElemIdDl;
 use crate::entities::mm::enums::type34_elem_id_ul::MmType34ElemIdUl;
 use crate::entities::mm::fields::group_identity_downlink::GroupIdentityDownlink;
 use crate::entities::mm::fields::group_identity_uplink::GroupIdentityUplink;
-use crate::common::typed_pdu_fields::type34::{parse_type3_generic, parse_type4_header_generic, write_type4_header_generic, Type34Err};
+use crate::common::typed_pdu_fields::type34::{parse_type3_generic, parse_type4_header_generic, write_type34_header_generic, Type34Err};
 
 
 #[derive(Debug, PartialEq, Eq)]
@@ -88,7 +88,7 @@ impl MmType4FieldDl {
 
     pub fn write_field(buffer: &mut BitBuffer, field_type: MmType34ElemIdDl, elems: &dyn Any) {
         
-        write_type4_header_generic(buffer, field_type.into_raw());
+        write_type34_header_generic(buffer, field_type.into_raw());
 
         // Reserve length(11) + num_elems(6)
         let pos_len_field = buffer.get_raw_pos();
@@ -153,7 +153,7 @@ impl MmType4FieldUl {
 
     pub fn write_field(buffer: &mut BitBuffer, field_type: MmType34ElemIdUl, elems: &dyn Any) {
     
-        write_type4_header_generic(buffer, field_type.into_raw());
+        write_type34_header_generic(buffer, field_type.into_raw());
 
         // Reserve length(11) + num_elems(6)
         let pos_len_field = buffer.get_raw_pos();
@@ -167,7 +167,7 @@ impl MmType4FieldUl {
                     .expect("Expected Vec<GroupIdentityUplink>");
                 let n = vec.len() as u64;
                 for elem in vec {
-                    elem.to_bitbuf(buffer);
+                    elem.to_bitbuf(buffer).expect("to_bitbuf failed");
                 }
                 n
             }

@@ -7,20 +7,6 @@ pub enum PduParseError {
     InvalidValue{ field: &'static str, value: u64 }
 }
 
-// impl From<PduParseError> for std::io::Error {
-//     fn from(err: PduParseError) -> Self {
-//         use std::io::{Error, ErrorKind};
-//         match err {
-//             PduParseError::BufferEnded { field, .. } =>
-//                 Error::new(ErrorKind::UnexpectedEof, format!("{}: BufferEnded", field)),
-//             PduParseError::InvalidPduType { expected, found } =>
-//                 Error::new(ErrorKind::InvalidData, format!("PDU type mismatch (expected {}, got {})", expected, found)),
-
-//             Error::new(ErrorKind::InvalidData, format!("PDU type mismatch (expected {}, got {})", expected, found)),
-//         }
-//     }
-// }
-
 #[macro_export]
 macro_rules! expect_pdu_type {
     ($value:expr, $expected:expr) => {{

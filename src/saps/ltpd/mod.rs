@@ -1,4 +1,4 @@
-use crate::common::{bitbuffer::BitBuffer, tetra_common::Todo};
+use crate::common::{address::TetraAddress, bitbuffer::BitBuffer, tetra_common::Todo};
 
 // Clause 17.3.5 Service state diagram for the LTPD-SAP (MLE-SNDCP)
 
@@ -221,8 +221,8 @@ pub struct LtpdMleUnitdataInd {
     pub sdu: BitBuffer,
     pub endpoint_id: Todo,
     pub link_id: Todo,
-    pub received_tetra_address: Todo, // ITSI/GSSI
-    pub received_address_type: Todo,
+    pub received_tetra_address: TetraAddress, // ITSI/GSSI
+    // pub received_address_type: Todo,
     pub chan_change_resp_req: bool,
     pub chan_change_handle: Option<Todo>,
 }

@@ -2,7 +2,7 @@
 
 #![allow(unused)]
 
-use crate::common::{bitbuffer::BitBuffer, tetra_common::Todo};
+use crate::common::{address::TetraAddress, bitbuffer::BitBuffer, tetra_common::Todo};
 
 /// MLE-ACTIVITY request: this primitive shall be used by the CMCE to inform the MLE of the state of any circuit
 /// mode call(s).
@@ -156,7 +156,7 @@ pub struct LcmcMleResumeInd {
 /// TETRA infrastructure side. Parameter indicates which layer 2 service is required.
 #[derive(Debug)]
 pub struct LcmcMleUnitdataReq {
-    pub sdu: Todo,
+    pub sdu: BitBuffer,
     pub handle: Todo,
     pub endpoint_id: Todo,
     pub link_id: Todo,
@@ -165,6 +165,8 @@ pub struct LcmcMleUnitdataReq {
     pub layer2_qos: Todo,
     pub stealing_permission: bool,
     pub stealing_repeats_flag: bool,
+    /// We use this to indicate it may be retransmitted
+    /// This may differ from what ETSI envisioned
     pub eligible_for_graceful_degradation: bool,
 }
 
@@ -176,8 +178,8 @@ pub struct LcmcMleUnitdataInd {
     pub handle: Todo,
     pub endpoint_id: Todo,
     pub link_id: Todo,
-    pub received_tetra_address: Todo, // ITSI/GTSI
-    pub received_address_type: Todo,
+    pub received_tetra_address: TetraAddress, // ITSI/GTSI
+    // pub received_address_type: Todo,
     pub chan_change_resp_req: bool,
     pub chan_change_handle: Option<Todo>,
 }
