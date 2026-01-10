@@ -1,9 +1,4 @@
-use crate::{assert_warn, unimplemented_log};
-use crate::common::{address::TetraAddress, bitbuffer::BitBuffer, tdma_time::TdmaTime, tetra_common::Todo};
-use crate::entities::lmac::components::scramble::SCRAMB_INIT;
-use crate::entities::mle::pdus::{d_mle_sync::DMleSync, d_mle_sysinfo::DMleSysinfo};
-use crate::entities::umac::{enums::{access_assign_dl_usage::AccessAssignDlUsage, access_assign_ul_usage::AccessAssignUlUsage, basic_slotgrant_cap_alloc::BasicSlotgrantCapAlloc, basic_slotgrant_granting_delay::BasicSlotgrantGrantingDelay, reservation_requirement::ReservationRequirement}, fields::basic_slotgrant::BasicSlotgrant, pdus::{access_assign::{AccessAssign, AccessField}, access_assign_fr18::AccessAssignFr18, mac_resource::MacResource, mac_sync::MacSync, mac_sysinfo::MacSysinfo}, subcomp::{fillbits, frag::DlFragger}};
-use crate::saps::tmv::{TmvUnitdataReq, TmvUnitdataReqSlot, enums::logical_chans::LogicalChannel};
+use crate::{saps::tmv::{enums::logical_chans::LogicalChannel, {TmvUnitdataReq, TmvUnitdataReqSlot}}, common::{address::TetraAddress, bitbuffer::BitBuffer, tdma_time::TdmaTime, tetra_common::Todo}, entities::{lmac::components::scramble::SCRAMB_INIT, mle::pdus::{d_mle_sync::DMleSync, d_mle_sysinfo::DMleSysinfo}, umac::{enums::{access_assign_dl_usage::AccessAssignDlUsage, access_assign_ul_usage::AccessAssignUlUsage, basic_slotgrant_cap_alloc::BasicSlotgrantCapAlloc, basic_slotgrant_granting_delay::BasicSlotgrantGrantingDelay, reservation_requirement::ReservationRequirement}, fields::basic_slotgrant::BasicSlotgrant, pdus::{access_assign::{AccessAssign, AccessField}, access_assign_fr18::AccessAssignFr18, mac_resource::MacResource, mac_sync::MacSync, mac_sysinfo::MacSysinfo}, subcomp::fillbits}}, unimplemented_log};
 
 /// We submit this many TX timeslots ahead of the current time
 pub const MACSCHED_TX_AHEAD: usize = 1;
@@ -12,8 +7,8 @@ pub const MACSCHED_TX_AHEAD: usize = 1;
 pub const MACSCHED_NUM_FRAMES: usize = 18;
 
 const NULL_PDU_LEN_BITS: usize = 16;
-pub const SCH_HD_CAP: usize = 124;
-pub const SCH_F_CAP: usize = 268;
+const SCH_HD_CAP: usize = 124;
+const SCH_F_CAP: usize = 268;
 
 #[derive(Debug)]
 pub struct PrecomputedUmacPdus {
@@ -54,11 +49,10 @@ pub enum DlSchedElem {
     Grant(TetraAddress, BasicSlotgrant),
 
     /// A MAC-RESOURCE PDU. May be split into fragments upon processing, in which case a FragBuf will be inserted after processing the resource. 
-    /// TODO FIXME make this an Option<BitBuffer> to allow for null pdus without malloc
     Resource(MacResource, BitBuffer),
 
     /// A FragBuf containing remaining non-transmitted information after a MAC-RESOURCE start has been transmitted
-    FragBuf(DlFragger),
+    FragBuf(Todo),
 }
 
 const EMPTY_SCHED_ELEM: TimeslotSchedule = TimeslotSchedule {
@@ -270,12 +264,6 @@ impl BsChannelScheduler {
         self.dltx_queues[timeslot as usize - 1].push(elem);
     }
 
-    pub fn dl_enqueue_tma_frag(&mut self, timeslot: u8, fragger: DlFragger) {
-        tracing::debug!("dl_enqueue_tma_frag: ts {} enqueueing {:?}", timeslot, fragger);
-        let elem = DlSchedElem::FragBuf(fragger);
-        self.dltx_queues[timeslot as usize - 1].push(elem);
-    }
-
     pub fn dl_schedule_tmb(&mut self, _traffic: BitBuffer, _ts: &TdmaTime) {
         unimplemented!("Broadcast scheduling not implemented yet");
     }
@@ -384,8 +372,6 @@ impl BsChannelScheduler {
         taken
     }
 
-    /// Remove all grants and acks from queue. Integrates them into existing resources, if they exist.
-    /// If no resource exists, creates a resource with only the grant/ack. 
     pub fn dl_integrate_sched_elems_for_timeslot(&mut self, ts: TdmaTime) {
         
         // Remove all grants and acks from queue and collect them into a vec
@@ -395,12 +381,12 @@ impl BsChannelScheduler {
         for elem in grants_and_acks {
             
             // Try to find existing resource for this address
-            let ssi = match &elem {
-                DlSchedElem::Grant(ssi, _) => ssi,
-                DlSchedElem::RandomAccessAck(ssi) => ssi,
+            let addr = match &elem {
+                DlSchedElem::Grant(addr, _) => addr,
+                DlSchedElem::RandomAccessAck(addr) => addr,
                 _ => panic!(),
             };
-            let mac_resource = self.dl_get_scheduled_resource_for_ssi(ts, ssi);
+            let mac_resource = self.dl_get_scheduled_resource_for_ssi(ts, addr);
 
             match mac_resource {
                 Some(DlSchedElem::Resource(pdu, _sdu)) => {
@@ -408,11 +394,11 @@ impl BsChannelScheduler {
                     // Integrate grant into the resource
                     match &elem {
                         DlSchedElem::Grant(_, grant) => {
-                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Integrating grant {:?} into resource for addr {}", grant, ssi);
+                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Integrating grant {:?} into resource for addr {}", grant, addr);
                             pdu.slot_granting_element = Some(grant.clone());
                         },
                         DlSchedElem::RandomAccessAck(_) => {
-                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Integrating ack into resource for addr {}", ssi);
+                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Integrating ack into resource for addr {}", addr);
                             pdu.random_access_flag = true;
                         },
                         _ => panic!(),
@@ -423,12 +409,12 @@ impl BsChannelScheduler {
                     
                     let pdu = match &elem {
                         DlSchedElem::Grant(_, grant) => {
-                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Creating new resource for addr {} with grant {:?}", ssi, grant);
-                            Self::dl_make_minimal_resource(ssi, Some(grant.clone()), false)
+                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Creating new resource for addr {} with grant {:?}", addr, grant);
+                            Self::dl_make_minimal_resource(addr, Some(grant.clone()), false)
                         },
                         DlSchedElem::RandomAccessAck(_) => {
-                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Creating new resource for addr {} with ack", ssi);
-                            Self::dl_make_minimal_resource(ssi, None, true)
+                            tracing::debug!("dl_integrate_sched_elems_for_timeslot: Creating new resource for addr {} with ack", addr);
+                            Self::dl_make_minimal_resource(addr, None, true)
                         },
                         _ => panic!(),
                     };
@@ -486,24 +472,19 @@ impl BsChannelScheduler {
         let ts = self.cur_ts.add_timeslots(MACSCHED_TX_AHEAD as i32);
         
         // TODO FIXME allocate only if we have something to put in it
-        let mut buf: BitBuffer = BitBuffer::new(SCH_F_CAP);
+        let mut buf = BitBuffer::new(SCH_F_CAP);
 
         // Integrate all grants and random access acks into resources (either existing or new)
         self.dl_integrate_sched_elems_for_timeslot(ts);
 
         while !self.dltx_queues[ts.t as usize - 1].is_empty() {
-
-            // We want to be absolutely sure that each PDU in the MAC block starts on a byte boundary
-            assert!(buf.get_pos() % 8 == 0 || buf.get_len_remaining() == 0, "buf no longer byte-aligned: {}", buf.dump_bin());
-
-            // Get the next message we should be sending in this timeslot, if any
             let opt = self.dl_take_prioritized_sched_item(ts.t);
+
             if !(opt.is_none() || ts.t == 1) {
                 tracing::error!("got violating element {:?}", opt);
                 panic!();
             }
-
-            // Process the element
+            
             match opt {
                 Some(sched_elem) => {
                     match sched_elem {
@@ -513,54 +494,17 @@ impl BsChannelScheduler {
 
                         DlSchedElem::Resource(mut pdu, mut sdu) => {
                             
-                            // Compute required capacity
-                            let sdu_len = sdu.get_len();
-                            let pdu_len = pdu.compute_header_len();
-                            let num_fill_bits = fillbits::addition::compute_required_naive(pdu_len + sdu_len);
-                            let total_len = pdu_len + sdu_len + num_fill_bits;
+                            let sdu_bits = sdu.get_len();
+                            let num_fill_bits = pdu.update_len_and_fill_ind(sdu_bits);
 
-                            // Check if we can fit this into the space that remains in this buf
-                            // It's very much possible that if the byte boundary is within the MAC block, but the 
-                            // fill bits would overflow the mac block, we could just fill until the boundary. However,
-                            // I don't want to risk this edge case. Fragmentation is the safest choice.
-                            if total_len <= buf.get_len_remaining() {
-                                // Can send in single MAC-RESOURCE
-
-                                let x = pdu.update_len_and_fill_ind(sdu_len);
-                                assert_eq!(x, num_fill_bits, "computed num_fill_bits mismatch");
-
-                                pdu.to_bitbuf(&mut buf);
-                                // assert_eq!(pdu_len, buf.get_len(), "pdu len mismatch");
-
-                                buf.copy_bits(&mut sdu, sdu_len);
-                                
-                                fillbits::addition::write(&mut buf, Some(num_fill_bits));
-                                tracing::debug!("-> finalized {:?} sdu {}", pdu, sdu.dump_bin());
-                            } else {
-                                // Need to fragment into MAC-RESOURCE, [MAC-FRAG], MAC-END
-                                let mut fragger = DlFragger::new(pdu, sdu);
-                                let done: bool = fragger.get_next_chunk(&mut buf);
-                                if !done {
-                                    // Almost certain, as we start fragging for a reason
-                                    // However, to catch some weird edge case, we check
-                                    // Enqueue fragger if not yet done. 
-                                    self.dl_enqueue_tma_frag(ts.t, fragger);    
-                                } else {
-                                    // Should never happen
-                                    assert_warn!(!done, "made fragger but already done");
-                                }
-                                unimplemented!("NEEDS TESTING");
-                            }
+                            pdu.to_bitbuf(&mut buf);
+                            buf.copy_bits(&mut sdu, sdu_bits);
+                            fillbits::addition::write(&mut buf, Some(num_fill_bits));
+                            tracing::debug!("-> finalized {:?} sdu {}", pdu, sdu.dump_bin());
                         },
                         
-                        DlSchedElem::FragBuf(mut fragger) => {
-                            
-                            let done: bool = fragger.get_next_chunk(&mut buf);
-                            if !done {
-                                // Re-enqueue for next MAC-FRAG or MAC-END
-                                self.dl_enqueue_tma_frag(ts.t, fragger);
-                            }                            
-                            unimplemented!("NEEDS TESTING");
+                        DlSchedElem::FragBuf(_) => {
+                            unimplemented_log!("finalize_ts_for_tick: FragBuf scheduling not implemented");
                         }
 
                         _ => panic!("finalize_ts_for_tick: Unexpected DlSchedElem type: {:?}", sched_elem)
@@ -572,8 +516,6 @@ impl BsChannelScheduler {
                 }
             }
         }
-
-        assert!(buf.get_pos() % 8 == 0 || buf.get_len_remaining() == 0, "buf no longer byte-aligned: {}", buf.dump_bin());
         
         // Check if any signalling message was put
         let mut elem = if buf.get_pos() == 0 {
@@ -678,6 +620,22 @@ impl BsChannelScheduler {
                     _ => panic!("finalize_ts_for_tick: invalid timeslot {}", ts.t),
                 }
                 
+                // if ts.t < 4 {
+                //     // ts 1,2,3
+                //     aach.dl_usage = AccessAssignDlUsage::CommonControl;
+                //     aach.ul_usage = AccessAssignUlUsage::CommonAndAssigned;
+                //     // f1 gets populated with DL Unallocated marker
+                //     aach.f2_af = Some(AccessField{
+                //         access_code: 0,
+                //         base_frame_len: 4,
+                //     });
+                // } else {
+                //     // ts 4
+                //     aach.dl_usage = AccessAssignDlUsage::Unallocated;
+                //     aach.ul_usage = AccessAssignUlUsage::Unallocated;
+                //     // f1 and f2 are populated with Unallocated markers
+                // }
+
                 // TODO FIXME: Access field defaults are possibly not great
                 // TODO FIXME: support assigned control
                 aach.to_bitbuf(&mut aach_bb);
@@ -743,9 +701,9 @@ impl BsChannelScheduler {
             // tracing::trace!("finalize_ts_for_tick: putting default SYSINFO");
 
             // Check blk1 is indeed short (124 for half-slot or 60 for SYNC)
-            assert!(elem.blk1.as_ref().unwrap().mac_block.get_len() <= SCH_HD_CAP);
+            assert!(elem.blk1.as_ref().unwrap().mac_block.get_len() <= 124);
             
-            let mut buf = BitBuffer::new(SCH_HD_CAP); // Exactly 124
+            let mut buf = BitBuffer::new(124); // Exactly 124
             
             // Write MAC-SYSINFO
             if ts.t % 2 == 1 {
@@ -765,7 +723,7 @@ impl BsChannelScheduler {
             })
 
             // TESTING CODE: DL/UL SYNC CHECKING
-            // let mut buf = BitBuffer::new(SCH_HD_CAP); // Exactly 124
+            // let mut buf = BitBuffer::new(124); // Exactly 124
             // buf.write_bits(0xFFFF, 16);
             // buf.write_bits(ts.t as u64, 8); 
             // buf.write_bits(ts.f as u64, 8);

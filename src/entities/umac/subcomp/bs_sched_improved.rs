@@ -537,6 +537,7 @@ impl BsChannelScheduler {
                                 fillbits::addition::write(&mut buf, Some(num_fill_bits));
                                 tracing::debug!("-> finalized {:?} sdu {}", pdu, sdu.dump_bin());
                             } else {
+                                unimplemented!("NEEDS TESTING");
                                 // Need to fragment into MAC-RESOURCE, [MAC-FRAG], MAC-END
                                 let mut fragger = DlFragger::new(pdu, sdu);
                                 let done: bool = fragger.get_next_chunk(&mut buf);
@@ -549,18 +550,16 @@ impl BsChannelScheduler {
                                     // Should never happen
                                     assert_warn!(!done, "made fragger but already done");
                                 }
-                                unimplemented!("NEEDS TESTING");
                             }
                         },
                         
                         DlSchedElem::FragBuf(mut fragger) => {
-                            
+                            unimplemented!("NEEDS TESTING");
                             let done: bool = fragger.get_next_chunk(&mut buf);
                             if !done {
                                 // Re-enqueue for next MAC-FRAG or MAC-END
                                 self.dl_enqueue_tma_frag(ts.t, fragger);
                             }                            
-                            unimplemented!("NEEDS TESTING");
                         }
 
                         _ => panic!("finalize_ts_for_tick: Unexpected DlSchedElem type: {:?}", sched_elem)

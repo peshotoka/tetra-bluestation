@@ -3,6 +3,14 @@ name = "tetra-bluestation"
 version = "0.2.4"
 edition = "2024"
 
+[[bin]]
+name = "tetra-bluestation"
+path = "src/main.rs"
+
+[[bin]]
+name = "tool"
+path = "src/tool.rs"
+
 [dependencies]
 as-any = "0.3.2"
 num = "0.4.3"

@@ -35,7 +35,7 @@ use crate::entities::umac::pdus::mac_sysinfo::MacSysinfo;
 use crate::entities::umac::pdus::mac_u_blck::MacUBlck;
 use crate::entities::umac::pdus::mac_u_signal::MacUSignal;
 use crate::entities::umac::subcomp::event_labels::EventLabelStore;
-use crate::entities::umac::subcomp::fillbits::get_num_fill_bits;
+use crate::entities::umac::subcomp::fillbits;
 use crate::entities::umac::subcomp::bs_sched::{BsChannelScheduler, PrecomputedUmacPdus};
 use crate::{assert_warn, unimplemented_log};
 
@@ -489,7 +489,7 @@ impl UmacBs {
         tracing::trace!("rx_mac_data: {}", prim.pdu.dump_bin_full(true));
         let num_fill_bits= {
             if pdu.fill_bits {
-                get_num_fill_bits(&prim.pdu, pdu_len_bits, is_null_pdu)
+                fillbits::removal::get_num_fill_bits(&prim.pdu, pdu_len_bits, is_null_pdu)
             } else {
                 0
             }
@@ -676,7 +676,7 @@ impl UmacBs {
         // tracing::trace!("rx_mac_access: {}", prim.pdu.dump_bin_full(true));
         assert!(pdu_len_bits <= prim.pdu.get_len(), "MAC-ACCESS pdu longer than buf");
         let num_fill_bits = if pdu.fill_bits {
-            get_num_fill_bits(&prim.pdu, pdu_len_bits, pdu.is_null_pdu())
+            fillbits::removal::get_num_fill_bits(&prim.pdu, pdu_len_bits, pdu.is_null_pdu())
         } else {
             0
         };
@@ -797,7 +797,7 @@ impl UmacBs {
         let mut pdu_len_bits = prim.pdu.get_len();
         let num_fill_bits= {
             if pdu.fill_bits {
-                get_num_fill_bits(&prim.pdu, pdu_len_bits, false)
+                fillbits::removal::get_num_fill_bits(&prim.pdu, pdu_len_bits, false)
             } else {
                 0
             }
@@ -845,7 +845,7 @@ impl UmacBs {
         // Strip fill bits if any
         let num_fill_bits = {
             if pdu.fill_bits {
-                get_num_fill_bits(&prim.pdu, pdu_len_bits, false)
+                fillbits::removal::get_num_fill_bits(&prim.pdu, pdu_len_bits, false)
             } else {
                 0
             }
@@ -955,7 +955,7 @@ impl UmacBs {
         // Strip fill bits if any
         let num_fill_bits = {
             if pdu.fill_bits {
-                get_num_fill_bits(&prim.pdu, pdu_len_bits, false)
+                fillbits::removal::get_num_fill_bits(&prim.pdu, pdu_len_bits, false)
             } else {
                 0
             }

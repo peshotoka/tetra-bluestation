@@ -37,7 +37,7 @@ impl MmBs {
     }
 
     fn rx_u_itsi_detach(&mut self, _queue: &mut MessageQueue, mut message: SapMsg) {
-        tracing::trace!("rx_u_itsi_detach: {:?}", message);
+        tracing::trace!("rx_u_itsi_detach");
         let SapMsgInner::LmmMleUnitdataInd(prim) = &mut message.msg else {panic!()};
         
         let _pdu = match UItsiDetach::from_bitbuf(&mut prim.sdu) {
@@ -60,7 +60,7 @@ impl MmBs {
     }
 
     fn rx_u_location_update_demand(&mut self, queue: &mut MessageQueue, mut message: SapMsg) {
-        tracing::trace!("rx_location_update_demand: {:?}", message);
+        tracing::trace!("rx_location_update_demand");
         let SapMsgInner::LmmMleUnitdataInd(prim) = &mut message.msg else {panic!()};
 
         let pdu = match ULocationUpdateDemand::from_bitbuf(&mut prim.sdu) {
@@ -220,7 +220,7 @@ impl MmBs {
     }
 
     fn rx_u_attach_detach_group_identity(&mut self, queue: &mut MessageQueue, mut message: SapMsg) {
-        tracing::trace!("rx_u_attach_detach_group_identity: {:?}", message);
+        tracing::trace!("rx_u_attach_detach_group_identity");
         let SapMsgInner::LmmMleUnitdataInd(prim) = &mut message.msg else {panic!()};
         
         let issi = prim.received_address.ssi;

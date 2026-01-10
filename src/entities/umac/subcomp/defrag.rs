@@ -183,3 +183,33 @@ impl MacDefrag {
         Some(defragbuffer)
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::{address::SsiType, bitbuffer::BitBuffer, debug};
+
+
+    #[test]
+    fn test_single_chunk() { 
+        debug::setup_logging_verbose();
+        
+        let mut buf1 = BitBuffer::from_bitstr("");
+        let t1 = TdmaTime::default().add_timeslots(2); // UL time 0
+        let mut buf2 = BitBuffer::from_bitstr("");
+        let t2 = t1.add_timeslots(4);
+        let mut buf3 = BitBuffer::from_bitstr("");
+        let t3 = t2.add_timeslots(4);
+
+        let mut defragger = MacDefrag::new();
+        defragger.insert_first(
+            &mut buf1, 
+            t1, 
+            TetraAddress { ssi: 1234, ssi_type: SsiType::Issi, encrypted: false},
+            None
+        );
+        defragger.insert_next(&mut buf2, t2);
+        defragger.insert_last(&mut buf3, t3);
+    }
+}
