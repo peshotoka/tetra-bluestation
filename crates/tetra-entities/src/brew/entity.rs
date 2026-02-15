@@ -8,6 +8,7 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use uuid::Uuid;
 
 use tetra_config::SharedConfig;
+use tetra_core::TimeslotOwner;
 use tetra_core::{
     BitBuffer, Direction, Sap, SsiType, TdmaTime, TetraAddress, tetra_entities::TetraEntity,
 };
@@ -119,8 +120,6 @@ pub struct BrewEntity {
     /// Circuit allocation state
     next_call_id: u16,
     next_usage: u8,
-    /// Track which timeslots are in use (index 0 = TS2, 1 = TS3, 2 = TS4)
-    ts_in_use: [bool; 3],
 
     /// Whether the worker is connected
     connected: bool,
@@ -155,7 +154,6 @@ impl BrewEntity {
             ul_forwarded: HashMap::new(),
             next_call_id: 100, // Start at 100 to avoid collision with CMCE
             next_usage: 10,    // Start at 10 to avoid collision
-            ts_in_use: [false; 3],
             connected: false,
             worker_handle: Some(handle),
         }
@@ -163,36 +161,38 @@ impl BrewEntity {
 
     /// Allocate a free timeslot for a new call. Returns (timeslot, call_id, usage) or None.
     fn allocate_timeslot(&mut self) -> Option<(u8, u16, u8)> {
-        // Find first free timeslot (TS2, TS3, TS4)
-        for i in 0..3 {
-            if !self.ts_in_use[i] {
-                self.ts_in_use[i] = true;
-                let ts = (i as u8) + 2; // TS2=2, TS3=3, TS4=4
+        // Use centralized timeslot allocator to avoid collision with CMCE
+        let ts = {
+            let mut state = self.config.state_write();
+            state.timeslot_alloc.allocate_any(TimeslotOwner::Brew)?
+        };
 
-                let call_id = self.next_call_id;
-                self.next_call_id = if self.next_call_id >= 0x3FF {
-                    100
-                } else {
-                    self.next_call_id + 1
-                };
+        let call_id = self.next_call_id;
+        self.next_call_id = if self.next_call_id >= 0x3FF {
+            100
+        } else {
+            self.next_call_id + 1
+        };
 
-                let usage = self.next_usage;
-                self.next_usage = if self.next_usage >= 63 {
-                    10
-                } else {
-                    self.next_usage + 1
-                };
+        let usage = self.next_usage;
+        self.next_usage = if self.next_usage >= 63 {
+            10
+        } else {
+            self.next_usage + 1
+        };
 
-                return Some((ts, call_id, usage));
-            }
-        }
-        None
+        Some((ts, call_id, usage))
     }
 
     /// Release a timeslot
     fn release_timeslot(&mut self, ts: u8) {
-        if ts >= 2 && ts <= 4 {
-            self.ts_in_use[(ts - 2) as usize] = false;
+        let mut state = self.config.state_write();
+        if let Err(err) = state.timeslot_alloc.release(TimeslotOwner::Brew, ts) {
+            tracing::warn!(
+                "BrewEntity: failed to release timeslot ts={} err={:?}",
+                ts,
+                err
+            );
         }
     }
 
@@ -1041,32 +1041,45 @@ impl BrewEntity {
 
         fwd.frame_count += 1;
 
-        // Convert ACELP bits (1-bit-per-byte, 274 bytes) to packed STE format
-        // STE format: 1 header byte + 35 data bytes (274 bits packed + padding)
-        if acelp_bits.len() < 274 {
-            tracing::warn!("BrewEntity: UL voice too short: {} bits", acelp_bits.len());
-            return;
-        }
-
-        // Pack 274 bits into bytes, MSB first, prepend STE header
-        let mut ste_data = Vec::with_capacity(36);
-        ste_data.push(0x00); // STE header byte: normal speech frame
-
-        // Pack 274 bits (1-per-byte) into 35 bytes (280 bits, last 6 bits padded)
-        for chunk_idx in 0..35 {
-            let mut byte = 0u8;
-            for bit in 0..8 {
-                let bit_idx = chunk_idx * 8 + bit;
-                if bit_idx < 274 {
-                    byte |= (acelp_bits[bit_idx] & 1) << (7 - bit);
-                }
+        // Convert ACELP bits to STE format.
+        // Supported inputs:
+        //   - 274 bytes (1-bit-per-byte) → pack to 35 bytes + header
+        //   - 35 bytes (already packed) → prepend header
+        //   - 36 bytes (already STE with header) → send as-is
+        let ste_data = if acelp_bits.len() == 36 {
+            acelp_bits
+        } else if acelp_bits.len() == 35 {
+            let mut ste = Vec::with_capacity(36);
+            ste.push(0x00); // STE header byte: normal speech frame
+            ste.extend_from_slice(&acelp_bits);
+            ste
+        } else {
+            if acelp_bits.len() < 274 {
+                tracing::warn!("BrewEntity: UL voice too short: {} bits", acelp_bits.len());
+                return;
             }
-            ste_data.push(byte);
-        }
+
+            // Pack 274 bits into bytes, MSB first, prepend STE header
+            let mut ste = Vec::with_capacity(36);
+            ste.push(0x00); // STE header byte: normal speech frame
+
+            // Pack 274 bits (1-per-byte) into 35 bytes (280 bits, last 6 bits padded)
+            for chunk_idx in 0..35 {
+                let mut byte = 0u8;
+                for bit in 0..8 {
+                    let bit_idx = chunk_idx * 8 + bit;
+                    if bit_idx < 274 {
+                        byte |= (acelp_bits[bit_idx] & 1) << (7 - bit);
+                    }
+                }
+                ste.push(byte);
+            }
+            ste
+        };
 
         let _ = self.command_sender.send(BrewCommand::SendVoiceFrame {
             uuid: fwd.uuid,
-            length_bits: 274,
+            length_bits: (ste_data.len() * 8) as u16,
             data: ste_data,
         });
     }

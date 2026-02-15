@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use tetra_config::SharedConfig;
+use tetra_core::TimeslotOwner;
 use tetra_core::{
     BitBuffer, Direction, Sap, SsiType, TdmaTime, TetraAddress, tetra_entities::TetraEntity,
     unimplemented_log,
@@ -37,6 +39,7 @@ use crate::{
 
 /// Clause 11 Call Control CMCE sub-entity
 pub struct CcBsSubentity {
+    config: SharedConfig,
     dltime: TdmaTime,
     /// Cached D-SETUP PDUs for late-entry re-sends: call_id -> (D-SETUP PDU, dest address)
     cached_setups: HashMap<u16, (DSetup, TetraAddress)>,
@@ -57,8 +60,9 @@ struct ActiveLocalCall {
 }
 
 impl CcBsSubentity {
-    pub fn new() -> Self {
+    pub fn new(config: SharedConfig) -> Self {
         CcBsSubentity {
+            config,
             dltime: TdmaTime::default(),
             cached_setups: HashMap::new(),
             circuits: CircuitMgr::new(),
@@ -66,14 +70,23 @@ impl CcBsSubentity {
         }
     }
 
+    pub fn set_config(&mut self, config: SharedConfig) {
+        self.config = config;
+    }
+
     pub fn run_call_test(&mut self, queue: &mut MessageQueue, dltime: TdmaTime) {
         tracing::error!("-------- Running call test -------");
 
         // Create a new circuit
-        let circuit = match self
-            .circuits
-            .allocate_circuit(Direction::Dl, CommunicationType::P2Mp)
-        {
+        let circuit = match {
+            let mut state = self.config.state_write();
+            self.circuits.allocate_circuit_with_allocator(
+                Direction::Dl,
+                CommunicationType::P2Mp,
+                &mut state.timeslot_alloc,
+                TimeslotOwner::Cmce,
+            )
+        } {
             Ok(circuit) => circuit,
             Err(e) => {
                 tracing::error!("Failed to allocate circuit for call test: {:?}", e);
@@ -468,10 +481,15 @@ impl CcBsSubentity {
         let dest_addr = TetraAddress::new(dest_gssi, SsiType::Gssi);
 
         // Allocate circuit (DL+UL for group call)
-        let circuit = match self.circuits.allocate_circuit(
-            Direction::Both,
-            pdu.basic_service_information.communication_type,
-        ) {
+        let circuit = match {
+            let mut state = self.config.state_write();
+            self.circuits.allocate_circuit_with_allocator(
+                Direction::Both,
+                pdu.basic_service_information.communication_type,
+                &mut state.timeslot_alloc,
+                TimeslotOwner::Cmce,
+            )
+        } {
             Ok(circuit) => circuit.clone(),
             Err(e) => {
                 tracing::error!("Failed to allocate circuit for U-SETUP: {:?}", e);
@@ -684,16 +702,16 @@ impl CcBsSubentity {
 
                     CircuitMgrCmd::SendClose(call_id, circuit) => {
                         tracing::warn!("need to send CLOSE for call id {}", call_id);
+                        let ts = circuit.ts;
                         // Get our cached D-SETUP, build D-RELEASE and send
-                        let Some((pdu, dest_addr)) = self.cached_setups.get(&call_id) else {
+                        if let Some((pdu, dest_addr)) = self.cached_setups.get(&call_id) {
+                            let dest_addr = *dest_addr;
+                            let sdu = Self::build_d_release_from_d_setup(pdu);
+                            let prim = Self::build_sapmsg(sdu, None, self.dltime, dest_addr);
+                            queue.push_back(prim);
+                        } else {
                             tracing::error!("No cached D-SETUP for call id {}", call_id);
-                            return;
-                        };
-                        let dest_addr = *dest_addr;
-
-                        let sdu = Self::build_d_release_from_d_setup(pdu);
-                        let prim = Self::build_sapmsg(sdu, None, self.dltime, dest_addr);
-                        queue.push_back(prim);
+                        }
 
                         // Clean up call state
                         self.cached_setups.remove(&call_id);
@@ -701,6 +719,7 @@ impl CcBsSubentity {
 
                         // Signal UMAC to release the circuit
                         Self::signal_umac_circuit_close(queue, circuit, self.dltime);
+                        self.release_timeslot(ts);
                     }
                 }
             }
@@ -731,6 +750,17 @@ impl CcBsSubentity {
         }
     }
 
+    fn release_timeslot(&mut self, ts: u8) {
+        let mut state = self.config.state_write();
+        if let Err(err) = state.timeslot_alloc.release(TimeslotOwner::Cmce, ts) {
+            tracing::warn!(
+                "CcBsSubentity: failed to release timeslot ts={} err={:?}",
+                ts,
+                err
+            );
+        }
+    }
+
     /// Release a call: send D-RELEASE, close circuits, clean up state
     fn release_call(&mut self, queue: &mut MessageQueue, call_id: u16) {
         let Some((pdu, dest_addr)) = self.cached_setups.get(&call_id) else {
@@ -750,6 +780,8 @@ impl CcBsSubentity {
             if let Ok(circuit) = self.circuits.close_circuit(Direction::Both, ts) {
                 Self::signal_umac_circuit_close(queue, circuit, self.dltime);
             }
+
+            self.release_timeslot(ts);
 
             // Notify Brew entity that this local call has ended
             let notify = SapMsg {
@@ -953,6 +985,24 @@ impl CcBsSubentity {
 
         let msg = Self::build_sapmsg_stealing(sdu, self.dltime, dest_addr);
         queue.push_back(msg);
+
+        // Notify Brew entity about the speaker change (new LocalCallStart for new speaker)
+        let Some(call) = self.active_calls.get(&call_id) else {
+            return;
+        };
+        let notify = SapMsg {
+            sap: Sap::Control,
+            src: TetraEntity::Cmce,
+            dest: TetraEntity::Brew,
+            dltime: self.dltime,
+            msg: SapMsgInner::CmceCallControl(CallControl::LocalCallStart {
+                call_id,
+                source_issi: requesting_party.ssi,
+                dest_gssi: dest_addr.ssi,
+                ts: call.ts,
+            }),
+        };
+        queue.push_back(notify);
     }
 
     /// Handle U-RELEASE: radio explicitly releases the call

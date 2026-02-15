@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use tetra_core::{Direction, TdmaTime};
+use tetra_core::{Direction, TdmaTime, TimeslotAllocator, TimeslotOwner};
 use tetra_pdus::cmce::structs::cmce_circuit::CmceCircuit;
 use tetra_saps::{
     control::enums::{circuit_mode_type::CircuitModeType, communication_type::CommunicationType},
@@ -168,6 +168,40 @@ impl CircuitMgr {
             simplex_duplex: false,   // TODO, simplex only for now
             speech_service: Some(0), // TODO, only TETRA encoded speech for now
             etee_encrypted: false,   // TODO, no encryption for now
+        };
+
+        // Register circuit and return
+        Ok(self.open_circuit(dir, circuit)?)
+    }
+
+    /// Allocate circuit using centralized timeslot allocator
+    pub fn allocate_circuit_with_allocator(
+        &mut self,
+        dir: Direction,
+        comm_type: CommunicationType,
+        timeslot_alloc: &mut TimeslotAllocator,
+        owner: TimeslotOwner,
+    ) -> Result<&CmceCircuit, CircuitErr> {
+        // Get timeslot from centralized allocator
+        let ts = timeslot_alloc
+            .allocate_any(owner)
+            .ok_or(CircuitErr::NoCircuitFree)?;
+
+        let call_id = self.get_next_call_id();
+        let usage = self.get_next_usage_number();
+
+        // Create circuit
+        let circuit = CmceCircuit {
+            ts_created: self.dltime,
+            direction: dir,
+            ts,
+            call_id,
+            usage,
+            circuit_mode: CircuitModeType::TchS,
+            comm_type,
+            simplex_duplex: false,
+            speech_service: Some(0),
+            etee_encrypted: false,
         };
 
         // Register circuit and return

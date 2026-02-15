@@ -34,7 +34,7 @@ use tetra_saps::tmv::enums::logical_chans::LogicalChannel;
 use tetra_saps::{SapMsg, SapMsgInner};
 
 use crate::lmac::components::scrambler;
-use crate::umac::subcomp::bs_sched::{BsChannelScheduler, PrecomputedUmacPdus};
+use crate::umac::subcomp::bs_sched::{BsChannelScheduler, PrecomputedUmacPdus, TCH_S_CAP};
 use crate::umac::subcomp::fillbits;
 use crate::{MessageQueue, TetraEntityTrait};
 
@@ -1324,32 +1324,63 @@ impl UmacBs {
 
     fn rx_tmd_prim(&mut self, queue: &mut MessageQueue, message: SapMsg) {
         tracing::trace!("rx_tmd_prim");
+        let dltime = message.dltime;
+        let src = message.src;
         match message.msg {
             // DL voice from Brew/upper layer → schedule for DL transmission
             SapMsgInner::TmdCircuitDataReq(prim) => {
-                self.channel_scheduler.dl_schedule_tmd(prim.ts, prim.data);
+                let ts = prim.ts;
+                if self.channel_scheduler.circuit_is_active(Direction::Dl, ts) {
+                    self.channel_scheduler.dl_schedule_tmd(ts, prim.data);
+                } else {
+                    tracing::warn!(
+                        "rx_tmd_prim: dropping DL voice on inactive circuit ts={} src={:?} dltime={}",
+                        ts,
+                        src,
+                        dltime
+                    );
+                }
             }
-            // UL voice from LMAC → loopback to DL for group call repeater
+            // UL voice from LMAC → forward to Brew + optional loopback to DL
             SapMsgInner::TmdCircuitDataInd(prim) => {
                 let ts = prim.ts;
-                // Only loopback if there's an active DL circuit on this timeslot
-                if self.channel_scheduler.circuit_is_active(Direction::Dl, ts) {
-                    tracing::trace!("rx_tmd_prim: loopback UL voice on ts={}", ts);
-                    self.channel_scheduler
-                        .dl_schedule_tmd(ts, prim.data.clone());
+                let data = prim.data;
 
-                    // Also forward UL voice to upper layers (Brew entity) for potential TetraPack TX
+                // Forward UL voice to upper layers (Brew entity)
+                if self.channel_scheduler.circuit_is_active(Direction::Ul, ts) {
                     let fwd = SapMsg {
                         sap: Sap::TmdSap,
                         src: TetraEntity::Umac,
                         dest: TetraEntity::Brew,
-                        dltime: message.dltime,
-                        msg: SapMsgInner::TmdCircuitDataInd(prim),
+                        dltime,
+                        msg: SapMsgInner::TmdCircuitDataInd(tetra_saps::tmd::TmdCircuitDataInd {
+                            ts,
+                            data: data.clone(),
+                        }),
                     };
                     queue.push_back(fwd);
                 } else {
                     tracing::trace!(
-                        "rx_tmd_prim: no active DL circuit on ts={}, dropping UL voice",
+                        "rx_tmd_prim: no active UL circuit on ts={}, dropping UL voice to Brew",
+                        ts
+                    );
+                }
+
+                // Loopback only if there's an active DL circuit on this timeslot
+                if self.channel_scheduler.circuit_is_active(Direction::Dl, ts) {
+                    tracing::trace!("rx_tmd_prim: loopback UL voice on ts={}", ts);
+                    if let Some(packed) = pack_ul_acelp_bits(&data) {
+                        self.channel_scheduler.dl_schedule_tmd(ts, packed);
+                    } else {
+                        tracing::warn!(
+                            "rx_tmd_prim: unsupported UL voice length {} on ts={}, skipping loopback",
+                            data.len(),
+                            ts
+                        );
+                    }
+                } else {
+                    tracing::trace!(
+                        "rx_tmd_prim: no active DL circuit on ts={}, skipping loopback",
                         ts
                     );
                 }
@@ -1559,4 +1590,33 @@ impl TetraEntityTrait for UmacBs {
         tracing::trace!("UmacBs tick: Pushing finalized timeslot to LMAC: {:?}", s);
         queue.push_back(s);
     }
+}
+
+/// Pack UL ACELP voice bits (274 bits, one-bit-per-byte) into packed byte array for DL transmission.
+/// Handles both already-packed (35 bytes) and unpacked (274 bytes) formats.
+fn pack_ul_acelp_bits(bits: &[u8]) -> Option<Vec<u8>> {
+    const PACKED_TCH_S_BYTES: usize = (TCH_S_CAP + 7) / 8;
+
+    // Already packed format — pass through
+    if bits.len() == PACKED_TCH_S_BYTES {
+        return Some(bits.to_vec());
+    }
+    // Insufficient data
+    if bits.len() < TCH_S_CAP {
+        return None;
+    }
+
+    // Pack 274 one-bit-per-byte into 35 bytes (last byte has 2 padding bits)
+    let mut out = Vec::with_capacity(PACKED_TCH_S_BYTES);
+    for chunk_idx in 0..PACKED_TCH_S_BYTES {
+        let mut byte = 0u8;
+        for bit in 0..8 {
+            let bit_idx = chunk_idx * 8 + bit;
+            if bit_idx < TCH_S_CAP {
+                byte |= (bits[bit_idx] & 1) << (7 - bit);
+            }
+        }
+        out.push(byte);
+    }
+    Some(out)
 }
