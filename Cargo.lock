@@ -1484,6 +1484,7 @@ version = "0.3.4"
 dependencies = [
  "tetra-core",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

@@ -327,10 +327,15 @@ impl CircuitMgr {
             tasks = self.close_expired_circuits(tasks);
 
             // Next, go through channels, see if D-SETUPs need to be sent
+            // Late entry: resend D-SETUP every 20 multiframes (5 seconds)
+            const LATE_ENTRY_INTERVAL_TIMESLOTS: i32 = 20 * 18 * 4; // 20 MN = 1440 timeslots
+
             for circuit in self.dl.iter() {
                 if let Some(circuit) = circuit {
-                    // Circuit exists
-                    if circuit.ts_created.age(dltime) < 4 * 4 {
+                    let age = circuit.ts_created.age(dltime);
+
+                    // Send D-SETUP for first 4 frames after circuit creation
+                    if age < 4 * 4 {
                         tasks
                             .get_or_insert_with(Vec::new)
                             .push(CircuitMgrCmd::SendDSetup(
@@ -338,7 +343,9 @@ impl CircuitMgr {
                                 circuit.usage,
                                 circuit.ts,
                             ));
-                    } else if (circuit.ts_created.age(dltime) - 4) % 3 == 2 {
+                    }
+                    // Late entry: resend every 20 multiframes
+                    else if age % LATE_ENTRY_INTERVAL_TIMESLOTS == 0 {
                         tasks
                             .get_or_insert_with(Vec::new)
                             .push(CircuitMgrCmd::SendDSetup(

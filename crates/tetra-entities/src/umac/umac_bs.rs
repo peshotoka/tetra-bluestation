@@ -1512,9 +1512,14 @@ impl UmacBs {
             CallControl::Close(_, _) => {
                 self.rx_control_circuit_close(queue, prim);
             }
-            // LocalCallStart/End are for CMCE → Brew, not UMAC
-            CallControl::LocalCallStart { .. } | CallControl::LocalCallEnd { .. } => {
-                tracing::trace!("rx_control: ignoring LocalCall notification (not for UMAC)");
+            // LocalCall* and NetworkCall* are for CMCE ↔ Brew, not UMAC
+            CallControl::LocalCallStart { .. }
+            | CallControl::LocalCallTxStopped { .. }
+            | CallControl::LocalCallEnd { .. }
+            | CallControl::NetworkCallStart { .. }
+            | CallControl::NetworkCallReady { .. }
+            | CallControl::NetworkCallEnd { .. } => {
+                tracing::trace!("rx_control: ignoring CMCE-Brew notification (not for UMAC)");
             }
         }
     }
