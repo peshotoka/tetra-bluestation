@@ -1,10 +1,8 @@
-
 pub mod removal {
     use tetra_core::bitbuffer::BitBuffer;
 
     /// Returns the number of fill bits at the end of the PDU in bitbuf, given the total pdu_len_bits.
     pub fn get_num_fill_bits(bitbuf: &BitBuffer, pdu_len_bits: usize, suppress_warning: bool) -> usize {
-        
         let mut index = pdu_len_bits as isize - 1;
         // TODO FIXME improve efficiency by fetching larger chunks than 1 bit
         while index >= bitbuf.get_pos() as isize {
@@ -19,7 +17,7 @@ pub mod removal {
         if !suppress_warning {
             tracing::warn!("No fill bits found");
         }
-        
+
         0
     }
 }
@@ -27,7 +25,7 @@ pub mod removal {
 pub mod addition {
     use tetra_core::bitbuffer::BitBuffer;
 
-    /// Compute how many fill bits need to be added in order to reach the next byte boundary. 
+    /// Compute how many fill bits need to be added in order to reach the next byte boundary.
     /// Returns 0-7
     #[inline(always)]
     pub fn compute_required_bytealigned(total_pdu_sdu_len_bits: usize) -> usize {
@@ -63,9 +61,9 @@ pub mod addition {
             } else {
                 // Zero fill bits
             }
-        } else if bitbuf.get_len_remaining() > 0{
+        } else if bitbuf.get_len_remaining() > 0 {
             // Fill  buf
-            bitbuf.write_bit(1);    
+            bitbuf.write_bit(1);
             bitbuf.write_zeroes(bitbuf.get_len_remaining());
         } else {
             // No space left

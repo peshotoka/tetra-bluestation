@@ -157,54 +157,27 @@ impl BrewEntity {
                     priority,
                     service,
                 } => {
-                    tracing::info!(
-                        "BrewEntity: GROUP_TX service={} (0=TETRA ACELP, expect 0)",
-                        service
-                    );
+                    tracing::info!("BrewEntity: GROUP_TX service={} (0=TETRA ACELP, expect 0)", service);
                     self.handle_group_call_start(queue, uuid, source_issi, dest_gssi, priority);
                 }
                 BrewEvent::GroupCallEnd { uuid, cause } => {
                     self.handle_group_call_end(queue, uuid, cause);
                 }
-                BrewEvent::VoiceFrame {
-                    uuid,
-                    length_bits,
-                    data,
-                } => {
+                BrewEvent::VoiceFrame { uuid, length_bits, data } => {
                     self.handle_voice_frame(queue, uuid, length_bits, data);
                 }
-                BrewEvent::SubscriberEvent {
-                    msg_type,
-                    issi,
-                    groups,
-                } => {
-                    tracing::debug!(
-                        "BrewEntity: subscriber event type={} issi={} groups={:?}",
-                        msg_type,
-                        issi,
-                        groups
-                    );
+                BrewEvent::SubscriberEvent { msg_type, issi, groups } => {
+                    tracing::debug!("BrewEntity: subscriber event type={} issi={} groups={:?}", msg_type, issi, groups);
                 }
                 BrewEvent::ServerError { error_type, data } => {
-                    tracing::error!(
-                        "BrewEntity: server error type={} data={} bytes",
-                        error_type,
-                        data.len()
-                    );
+                    tracing::error!("BrewEntity: server error type={} data={} bytes", error_type, data.len());
                 }
             }
         }
     }
 
     /// Handle new group call from Brew, reusing hanging call circuits if available.
-    fn handle_group_call_start(
-        &mut self,
-        queue: &mut MessageQueue,
-        uuid: Uuid,
-        source_issi: u32,
-        dest_gssi: u32,
-        priority: u8,
-    ) {
+    fn handle_group_call_start(&mut self, queue: &mut MessageQueue, uuid: Uuid, source_issi: u32, dest_gssi: u32, priority: u8) {
         // Check if this call is already active (speaker change or repeated GROUP_TX)
         if let Some(call) = self.active_calls.get_mut(&uuid) {
             // Only notify CMCE if the speaker actually changed
@@ -232,11 +205,7 @@ impl BrewEntity {
                 });
             } else {
                 // Repeated GROUP_TX with same speaker - this is normal, just log at trace level
-                tracing::trace!(
-                    "BrewEntity: repeated GROUP_TX on uuid={} speaker={}",
-                    uuid,
-                    source_issi
-                );
+                tracing::trace!("BrewEntity: repeated GROUP_TX on uuid={} speaker={}", uuid, source_issi);
             }
             return;
         }
@@ -367,31 +336,17 @@ impl BrewEntity {
 
         for gssi in expired {
             if let Some(hanging) = self.hanging_calls.remove(&gssi) {
-                tracing::debug!(
-                    "BrewEntity: hanging call expired gssi={} uuid={} (no reuse)",
-                    gssi,
-                    hanging.uuid
-                );
+                tracing::debug!("BrewEntity: hanging call expired gssi={} uuid={} (no reuse)", gssi, hanging.uuid);
                 // No action needed - CMCE already released the circuit
             }
         }
     }
 
     /// Handle a voice frame from Brew — inject into the downlink
-    fn handle_voice_frame(
-        &mut self,
-        queue: &mut MessageQueue,
-        uuid: Uuid,
-        _length_bits: u16,
-        data: Vec<u8>,
-    ) {
+    fn handle_voice_frame(&mut self, queue: &mut MessageQueue, uuid: Uuid, _length_bits: u16, data: Vec<u8>) {
         let Some(call) = self.active_calls.get_mut(&uuid) else {
             // Voice frame for unknown call — might arrive before GROUP_TX or after GROUP_IDLE
-            tracing::trace!(
-                "BrewEntity: voice frame for unknown uuid={} ({} bytes)",
-                uuid,
-                data.len()
-            );
+            tracing::trace!("BrewEntity: voice frame for unknown uuid={} ({} bytes)", uuid, data.len());
             return;
         };
 
@@ -423,10 +378,7 @@ impl BrewEntity {
         // STE format: byte 0 = header (control bits), bytes 1-35 = 274 ACELP bits for TCH/S.
         // Strip the STE header and pass only the ACELP payload.
         if data.len() < 36 {
-            tracing::warn!(
-                "BrewEntity: voice frame too short ({} bytes, expected 36 STE bytes)",
-                data.len()
-            );
+            tracing::warn!("BrewEntity: voice frame too short ({} bytes, expected 36 STE bytes)", data.len());
             return;
         }
         let acelp_data = data[1..].to_vec(); // 35 bytes = 280 bits, of which 274 are ACELP
@@ -437,10 +389,7 @@ impl BrewEntity {
             src: TetraEntity::Brew,
             dest: TetraEntity::Umac,
             dltime: self.dltime,
-            msg: SapMsgInner::TmdCircuitDataReq(TmdCircuitDataReq {
-                ts,
-                data: acelp_data,
-            }),
+            msg: SapMsgInner::TmdCircuitDataReq(TmdCircuitDataReq { ts, data: acelp_data }),
         };
         queue.push_back(tmd_msg);
     }
@@ -479,10 +428,7 @@ impl BrewEntity {
             call.ts = Some(ts);
             call.usage = Some(usage);
         } else {
-            tracing::warn!(
-                "BrewEntity: NetworkCallReady for unknown uuid={}",
-                brew_uuid
-            );
+            tracing::warn!("BrewEntity: NetworkCallReady for unknown uuid={}", brew_uuid);
         }
     }
 }
@@ -536,11 +482,7 @@ impl TetraEntityTrait for BrewEntity {
                 self.rx_network_call_ready(brew_uuid, call_id, ts, usage);
             }
             _ => {
-                tracing::debug!(
-                    "BrewEntity: unexpected rx_prim from {:?} on {:?}",
-                    message.src,
-                    message.sap
-                );
+                tracing::debug!("BrewEntity: unexpected rx_prim from {:?} on {:?}", message.src, message.sap);
             }
         }
     }
@@ -642,10 +584,7 @@ impl BrewEntity {
                 fwd.frame_count
             );
         } else {
-            tracing::debug!(
-                "BrewEntity: local call ended on ts={} (already cleaned up during tx_stopped)",
-                ts
-            );
+            tracing::debug!("BrewEntity: local call ended on ts={} (already cleaned up during tx_stopped)", ts);
         }
     }
 

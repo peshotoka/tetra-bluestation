@@ -218,7 +218,7 @@ impl StackConfig {
             phy_io: CfgPhyIo::default(),
             net: CfgNetInfo { mcc, mnc },
             cell: CfgCellInfo::default(),
-            
+
             brew: None,
         }
     }
@@ -278,10 +278,7 @@ impl StackConfig {
             let (dlfreq, ulfreq) = freq_info.get_freqs();
 
             println!("    {:?}", freq_info);
-            println!(
-                "    Derived DL freq: {} Hz, UL freq: {} Hz\n",
-                dlfreq, ulfreq
-            );
+            println!("    Derived DL freq: {} Hz, UL freq: {} Hz\n", dlfreq, ulfreq);
 
             if soapy_cfg.dl_freq as u32 != dlfreq {
                 return Err("PhyIo DlFrequency does not match computed FreqInfo");

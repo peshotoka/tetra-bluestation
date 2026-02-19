@@ -61,10 +61,7 @@ impl TimeslotAllocator {
                 self.owners[idx] = Some(owner);
                 Ok(())
             }
-            Some(existing) => Err(TimeslotAllocErr::InUse {
-                ts,
-                owner: existing,
-            }),
+            Some(existing) => Err(TimeslotAllocErr::InUse { ts, owner: existing }),
         }
     }
 

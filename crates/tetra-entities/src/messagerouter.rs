@@ -21,9 +21,7 @@ pub struct MessageQueue {
 
 impl MessageQueue {
     pub fn new() -> Self {
-        Self {
-            messages: VecDeque::new(),
-        }
+        Self { messages: VecDeque::new() }
     }
 
     pub fn push_back(&mut self, message: SapMsg) {
@@ -65,9 +63,7 @@ impl MessageRouter {
     pub fn new(config: SharedConfig) -> Self {
         Self {
             entities: HashMap::new(),
-            msg_queue: MessageQueue {
-                messages: VecDeque::new(),
-            },
+            msg_queue: MessageQueue { messages: VecDeque::new() },
             _config: config,
             ts: TdmaTime::default(),
         }

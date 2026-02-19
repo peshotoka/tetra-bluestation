@@ -2,9 +2,7 @@ use std::cmp::min;
 
 use tetra_core::BitBuffer;
 
-use tetra_pdus::umac::pdus::{
-    mac_end_dl::MacEndDl, mac_frag_dl::MacFragDl, mac_resource::MacResource,
-};
+use tetra_pdus::umac::pdus::{mac_end_dl::MacEndDl, mac_frag_dl::MacFragDl, mac_resource::MacResource};
 
 use crate::umac::subcomp::fillbits;
 
@@ -41,14 +39,8 @@ impl BsFragger {
     /// and more chunks are needed.
     fn get_resource_chunk(&mut self, mac_block: &mut BitBuffer) -> bool {
         // Some sanity checks
-        assert!(
-            self.sdu.get_pos() == 0,
-            "SDU must be at the start of the buffer"
-        );
-        assert!(
-            !self.mac_hdr_is_written,
-            "MAC header should not be written yet"
-        );
+        assert!(self.sdu.get_pos() == 0, "SDU must be at the start of the buffer");
+        assert!(!self.mac_hdr_is_written, "MAC header should not be written yet");
         assert!(
             !(self.resource.is_null_pdu() && self.sdu.get_len_remaining() > 0),
             "Null PDU cannot have SDU data"
@@ -63,14 +55,15 @@ impl BsFragger {
 
         let total_len_bits = hdr_len_bits + sdu_len_bits + num_fill_bits;
         let total_len_bytes = total_len_bits / 8;
-        
+
         // Check if we can fit all in a single MAC-RESOURCE
         if total_len_bits <= slot_cap_bits {
-
             // Fits in one MAC-RESOURCE
             assert!(
                 total_len_bits % 8 == 0 || total_len_bits == mac_block.get_len_remaining(),
-                "PDU must fill slot or have byte aligned end, got len {} for remaining cap {}", total_len_bits, mac_block.get_len_remaining()
+                "PDU must fill slot or have byte aligned end, got len {} for remaining cap {}",
+                total_len_bits,
+                mac_block.get_len_remaining()
             );
 
             // Update PDU fields
@@ -80,12 +73,8 @@ impl BsFragger {
             tracing::debug!(
                 "-> {:?} sdu {}",
                 self.resource,
-                self.sdu.raw_dump_bin(
-                    false,
-                    false,
-                    self.sdu.get_pos(),
-                    self.sdu.get_pos() + sdu_len_bits
-                )
+                self.sdu
+                    .raw_dump_bin(false, false, self.sdu.get_pos(), self.sdu.get_pos() + sdu_len_bits)
             );
 
             // Write MAC-RESOURCE header, followed by TM-SDU, to MAC block
@@ -116,12 +105,8 @@ impl BsFragger {
             tracing::debug!(
                 "-> {:?} sdu {}",
                 self.resource,
-                self.sdu.raw_dump_bin(
-                    false,
-                    false,
-                    self.sdu.get_pos(),
-                    self.sdu.get_pos() + sdu_bits
-                )
+                self.sdu
+                    .raw_dump_bin(false, false, self.sdu.get_pos(), self.sdu.get_pos() + sdu_bits)
             );
 
             self.resource.to_bitbuf(mac_block);
@@ -141,10 +126,7 @@ impl BsFragger {
     /// TODO FIXME: support adding ChanAlloc element in MAC-END
     fn get_frag_or_end_chunk(&mut self, mac_block: &mut BitBuffer) -> bool {
         // Some sanity checks
-        assert!(
-            self.mac_hdr_is_written,
-            "MAC header should be previously written"
-        );
+        assert!(self.mac_hdr_is_written, "MAC header should be previously written");
 
         // Check if we can fit all in a MAC-END message
         let sdu_bits = self.sdu.get_len_remaining();
@@ -168,12 +150,8 @@ impl BsFragger {
             tracing::debug!(
                 "-> {:?} sdu {}",
                 pdu,
-                self.sdu.raw_dump_bin(
-                    false,
-                    false,
-                    self.sdu.get_pos(),
-                    self.sdu.get_pos() + sdu_bits
-                )
+                self.sdu
+                    .raw_dump_bin(false, false, self.sdu.get_pos(), self.sdu.get_pos() + sdu_bits)
             );
 
             // Write MAC-END header followed by TM-SDU
@@ -205,12 +183,8 @@ impl BsFragger {
             tracing::debug!(
                 "-> {:?} sdu {}",
                 pdu,
-                self.sdu.raw_dump_bin(
-                    false,
-                    false,
-                    self.sdu.get_pos(),
-                    self.sdu.get_pos() + sdu_bits
-                )
+                self.sdu
+                    .raw_dump_bin(false, false, self.sdu.get_pos(), self.sdu.get_pos() + sdu_bits)
             );
 
             pdu.to_bitbuf(mac_block);
@@ -231,7 +205,10 @@ impl BsFragger {
     /// Returns (bool is_done, usize bits_written)
     pub fn get_next_chunk(&mut self, mac_block: &mut BitBuffer) -> bool {
         assert!(!self.done, "all fragments have already been produced");
-        assert!(mac_block.get_len_written() % 8 == 0 || mac_block.get_len_remaining() == 0, "mac_block must be full or byte aligned before writing");
+        assert!(
+            mac_block.get_len_written() % 8 == 0 || mac_block.get_len_remaining() == 0,
+            "mac_block must be full or byte aligned before writing"
+        );
 
         self.done = if !self.mac_hdr_is_written {
             // First chunk, write MAC-RESOURCE
