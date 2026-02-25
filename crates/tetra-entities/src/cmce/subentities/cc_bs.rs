@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use tetra_config::SharedConfig;
 use tetra_core::TimeslotOwner;
 use tetra_core::{BitBuffer, Direction, Sap, SsiType, TdmaTime, TetraAddress, tetra_entities::TetraEntity, unimplemented_log};
+use tetra_pdus::cmce::enums::disconnect_cause::DisconnectCause;
 use tetra_pdus::cmce::{
     enums::{
         call_timeout::CallTimeout, call_timeout_setup_phase::CallTimeoutSetupPhase, cmce_pdu_type_ul::CmcePduTypeUl,
@@ -235,7 +236,7 @@ impl CcBsSubentity {
         }
     }
 
-    fn build_d_release_from_d_setup(d_setup_pdu: &DSetup, disconnect_cause: u8) -> BitBuffer {
+    fn build_d_release_from_d_setup(d_setup_pdu: &DSetup, disconnect_cause: DisconnectCause) -> BitBuffer {
         let pdu = DRelease {
             call_identifier: d_setup_pdu.call_identifier,
             disconnect_cause,
@@ -295,7 +296,7 @@ impl CcBsSubentity {
                     });
                 };
             };
-            self.release_call(queue, call_id, 14); // SwMI requested disconnection (no listeners)
+            self.release_call(queue, call_id, DisconnectCause::SwmiRequestedDisconnection);
         }
     }
 
@@ -789,7 +790,7 @@ impl CcBsSubentity {
                         // Get our cached D-SETUP, build D-RELEASE and send
                         if let Some((pdu, dest_addr)) = self.cached_setups.get(&call_id) {
                             let dest_addr = *dest_addr;
-                            let sdu = Self::build_d_release_from_d_setup(pdu, 13); // Expiry of timer
+                            let sdu = Self::build_d_release_from_d_setup(pdu, DisconnectCause::ExpiryOfTimer);
                             let prim = Self::build_sapmsg(sdu, None, self.dltime, dest_addr);
                             queue.push_back(prim);
                         } else {
@@ -829,7 +830,7 @@ impl CcBsSubentity {
 
         for call_id in expired {
             tracing::info!("Hangtime expired for call_id={}, releasing", call_id);
-            self.release_call(queue, call_id, 13); // Expiry of timer
+            self.release_call(queue, call_id, DisconnectCause::ExpiryOfTimer);
         }
     }
 
@@ -841,7 +842,7 @@ impl CcBsSubentity {
     }
 
     /// Release a call: send D-RELEASE, close circuits, clean up state
-    fn release_call(&mut self, queue: &mut MessageQueue, call_id: u16, disconnect_cause: u8) {
+    fn release_call(&mut self, queue: &mut MessageQueue, call_id: u16, disconnect_cause: DisconnectCause) {
         let Some((pdu, dest_addr)) = self.cached_setups.get(&call_id) else {
             tracing::error!("No cached D-SETUP for call_id={}", call_id);
             return;
@@ -1153,7 +1154,7 @@ impl CcBsSubentity {
 
         let call_id = pdu.call_identifier;
         tracing::info!("U-RELEASE: call_id={} cause={}", call_id, pdu.disconnect_cause);
-        self.release_call(queue, call_id, 1); // User requested disconnection
+        self.release_call(queue, call_id, DisconnectCause::UserRequestedDisconnection);
     }
 
     /// Handle U-DISCONNECT: MS requests call disconnection (ETSI 14.5.2.3.1)
@@ -1192,7 +1193,7 @@ impl CcBsSubentity {
         if is_call_owner {
             // Call owner: tear down the entire group call
             tracing::info!("U-DISCONNECT: call owner ISSI {} disconnecting call_id={}", sender.ssi, call_id);
-            self.release_call(queue, call_id, 1); // cause 1 = User requested disconnection
+            self.release_call(queue, call_id, DisconnectCause::UserRequestedDisconnection);
         } else {
             // Non-call owner: reject with D-RELEASE cause=8 ("Requested service not available")
             // individually addressed back to the sender. The group call continues.
@@ -1205,7 +1206,7 @@ impl CcBsSubentity {
 
             let d_release = DRelease {
                 call_identifier: call_id,
-                disconnect_cause: 8, // Requested service not available
+                disconnect_cause: DisconnectCause::RequestedServiceNotAvailable,
                 notification_indicator: None,
                 facility: None,
                 proprietary: None,
@@ -1541,7 +1542,7 @@ impl CcBsSubentity {
             });
         } else {
             // Already in hangtime or idle, release immediately
-            self.release_call(queue, call_id, 14); // SwMI requested disconnection
+            self.release_call(queue, call_id, DisconnectCause::SwmiRequestedDisconnection);
         }
     }
 
