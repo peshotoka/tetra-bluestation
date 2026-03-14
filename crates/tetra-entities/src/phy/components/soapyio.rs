@@ -131,21 +131,30 @@ impl SoapyIo {
         match driver {
             "plutosdr" => {
                 if let Some(cfg) = &soapy_cfg.io_cfg.iocfg_pluto {
+                    // deprecated value for direct, still supported
                     if let Some(usb_direct) = cfg.usb_direct {
                         dev_args.set("usb_direct", if usb_direct {"1"} else {"0"});
-                    } 
-                    if let Some(direct) = cfg.direct {
+                    }
+                    else if let Some(direct) = cfg.direct {
                         dev_args.set("direct", if direct {"1"} else {"0"});
-                    } 
+                    }
+                    else {
+                        // enable direct by default
+                        dev_args.set("direct","1");  
+                    }
                     if let Some(ref timestamp_every) = cfg.timestamp_every {
                         dev_args.set("timestamp_every", timestamp_every.to_string());
-                    } 
+                    }
+                    else {
+                        // sane default for USB connection
+                        dev_args.set("timestamp_every","1500");
+                    }
                     if let Some(loopback) = cfg.loopback {
                         dev_args.set("loopback", if loopback {"1"} else {"0"});
                     }
                     if let Some(ref uri) = cfg.uri {
                         dev_args.set("uri", uri.to_string());
-                    } 
+                    }
                 }
                 use_get_hardware_time = false;  
             } 
